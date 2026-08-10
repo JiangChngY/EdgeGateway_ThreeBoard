@@ -10,6 +10,7 @@
 #include <QMessageBox>
 #include <QSerialPortInfo>
 #include <QSettings>
+#include <QStatusBar>
 #include <QStyle>
 #include <QTabWidget>
 #include <QTableWidgetItem>
