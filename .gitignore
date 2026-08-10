@@ -44,3 +44,6 @@ qrc_*.cpp
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# Local-only interview preparation notes
+/docs/08_面试问答.md
