@@ -1,0 +1,51 @@
+name: Host CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  protocol-and-structure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run Python tests
+        run: python tests/run_all.py
+      - name: Strict-build and run the C protocol test
+        run: |
+          gcc -std=c99 -Wall -Wextra -Werror -pedantic -Icommon \
+            common/edge_protocol.c tests/c_protocol_test.c \
+            -o /tmp/c_protocol_test
+          /tmp/c_protocol_test
+      - name: Check deployment shell scripts
+        run: |
+          for script in deploy/*.sh; do
+            sh -n "$script"
+          done
+
+  qt-host-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt 5 build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            qtbase5-dev qt5-qmake libqt5serialport5-dev libqt5sql5-sqlite
+      - name: Build the STM32MP157 HMI source on the host
+        working-directory: mp157_hmi
+        run: |
+          qmake mp157_hmi.pro
+          make -j2
+      - name: Build the i.MX6ULL aggregator source on the host
+        working-directory: imx6ull_aggregator
+        run: |
+          qmake imx6ull_aggregator.pro
+          make -j2

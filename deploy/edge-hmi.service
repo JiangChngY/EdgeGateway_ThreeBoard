@@ -1,0 +1,16 @@
+[Unit]
+Description=STM32MP157 Edge Gateway HMI
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=QT_QPA_PLATFORM=linuxfb
+ExecStart=/opt/edge-gateway/bin/edge-hmi --config /opt/edge-gateway/config/mp157.ini
+Restart=always
+RestartSec=3
+User=root
+
+[Install]
+WantedBy=multi-user.target
+

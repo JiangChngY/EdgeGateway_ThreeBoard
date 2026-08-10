@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Build output
+build/
+build-*/
+*.o
+*.obj
+*.elf
+*.axf
+*.hex
+*.bin
+*.map
+*.d
+*.log
+
+# Keil generated output and user state
+firmware_f103/Objects/
+firmware_f103/Listings/
+firmware_f103/*.uvguix.*
+firmware_f103/*.uvopt
+firmware_f103/*.bak
+
+# Qt/qmake generated files
+Makefile
+Makefile.*
+.qmake.stash
+moc_*.cpp
+ui_*.h
+qrc_*.cpp
+*.pro.user
+
+# Runtime data
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini
