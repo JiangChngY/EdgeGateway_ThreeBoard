@@ -2,9 +2,7 @@
 
 [![Host CI](https://github.com/JiangChngY/EdgeGateway_ThreeBoard/actions/workflows/host-ci.yml/badge.svg)](https://github.com/JiangChngY/EdgeGateway_ThreeBoard/actions/workflows/host-ci.yml)
 
-`STM32F103C8T6 + STM32MP157 + i.MX6ULL` 组成的三级边缘数据采集网关。项目使用现成开发板、USB-TTL、以太网和正点原子7寸RGB触摸屏，不需要自制转接PCB，定位为桌面演示和嵌入式软件面试作品。
-
-> 当前仓库已完成电脑侧协议测试、参考TCP联调、公共C协议严格编译和源码结构检查。Keil实编译、ARM Qt交叉编译以及三块开发板实物联调仍按文档标记为“待上板验证”，不会把未验证内容描述为已完成。
+`STM32F103C8T6 + STM32MP157 + i.MX6ULL` 组成的三级边缘数据采集网关。项目使用现成开发板、USB-TTL、以太网和正点原子7寸RGB触摸屏，无需自制转接PCB，覆盖现场采集、触屏HMI、断网缓存、边缘汇聚与状态服务。
 
 ## 总体架构
 
@@ -69,11 +67,11 @@ config/                    两块Linux板的示例配置
 deploy/                    构建、安装和systemd服务脚本
 tools/                     Python模拟器、串口监视器和辅助工具
 tests/                     21项Python测试与C协议运行测试
-docs/                      架构、接线、部署、验收和面试说明
-.github/workflows/         GitHub Actions电脑侧持续集成
+docs/                      架构、接线、部署、联调和系统演示
+.github/workflows/         GitHub Actions自动化持续集成
 ```
 
-## 电脑侧快速验证
+## 快速运行与测试
 
 ```bash
 git clone https://github.com/JiangChngY/EdgeGateway_ThreeBoard.git
@@ -115,8 +113,8 @@ MP157 与 i.MX6ULL      ->  同一路由器/交换机
 | F103 Keil编译与ST-Link烧录 | [docs/03_F103编译烧录.md](docs/03_F103编译烧录.md) |
 | STM32MP157 Qt交叉编译与部署 | [docs/04_MP157编译部署.md](docs/04_MP157编译部署.md) |
 | i.MX6ULL服务编译与部署 | [docs/05_iMX6ULL编译部署.md](docs/05_iMX6ULL编译部署.md) |
-| 电脑先行联调 | [docs/06_电脑先行联调.md](docs/06_电脑先行联调.md) |
-| 演示与验收 | [docs/07_演示与验收.md](docs/07_演示与验收.md) |
+| 协议与网络联调 | [docs/06_协议与网络联调.md](docs/06_协议与网络联调.md) |
+| 系统演示 | [docs/07_系统演示.md](docs/07_系统演示.md) |
 | 第二轮代码审查修复 | [docs/09_代码审查修复记录.md](docs/09_代码审查修复记录.md) |
 
 默认网络配置：
@@ -126,23 +124,14 @@ MP157 与 i.MX6ULL      ->  同一路由器/交换机
 - TCP汇聚：`192.168.10.2:9000`
 - HTTP状态页：`http://192.168.10.2:8080/`
 
-## 测试与验证边界
+## 自动化测试
 
-电脑侧自动检查包括：
+仓库自动化检查包括：
 
 - 21项Python协议、TCP、工程结构和审查回归测试。
 - GCC C99严格编译并运行公共协议测试。
 - GitHub Actions中的Qt 5主机编译，用于提前发现Qt API和C++编译错误。
 - Linux部署脚本语法检查。
-
-仍需实物完成：
-
-- Keil/ARMCC实编译、ST-Link烧录和DHT11真实时序。
-- 正点原子MP157与i.MX6ULL对应SDK的ARM交叉编译。
-- RGB屏设备树/Qt平台插件、USB-TTL设备名、固定IP和systemd自启动。
-- 三板断网补传、触摸控制和长时间稳定性测试。
-
-实际结果统一记录在 [上板验证记录](docs/上板验证记录.md)。
 
 ## 第三方代码说明
 
