@@ -27,7 +27,12 @@ jobs:
       - name: Check deployment shell scripts
         run: |
           for script in deploy/*.sh; do
-            sh -n "$script"
+            bash -n "$script"
+          done
+          sh -n deploy/edge-aggregator.init
+          sh -n deploy/edge-gateway-forward.sh
+          for script in mp157_desktop/*.sh mp157_desktop/sdk/*.sh bsp_netboot/scripts/*.sh; do
+            bash -n "$script"
           done
 
   qt-host-build:
@@ -38,7 +43,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            qtbase5-dev qt5-qmake libqt5serialport5-dev libqt5sql5-sqlite
+            qtbase5-dev qt5-qmake libqt5serialport5-dev libqt5sql5-sqlite \
+            qtdeclarative5-dev qml-module-qtquick2 qml-module-qtquick-window2 \
+            qml-module-qtquick-controls2 qml-module-qtquick-layouts
       - name: Build the STM32MP157 HMI source on the host
         working-directory: mp157_hmi
         run: |
@@ -49,3 +56,14 @@ jobs:
         run: |
           qmake imx6ull_aggregator.pro
           make -j2
+      - name: Build the F103ZE desktop application on the host
+        working-directory: mp157_desktop
+        run: |
+          qmake edge-desktop.pro
+          make -j2
+      - name: Test serial capture, durable upload, restart recovery and aggregation
+        run: |
+          python3 mp157_desktop/test_serial.py "$PWD/mp157_desktop/edge-desktop"
+          python3 mp157_desktop/test_uplink.py \
+            "$PWD/mp157_desktop/edge-desktop" \
+            "$PWD/imx6ull_aggregator/edge-aggregator"

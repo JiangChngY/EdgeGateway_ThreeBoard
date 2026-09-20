@@ -4,6 +4,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QDebug>
+#include <cmath>
 
 static const int MAX_JSON_LINE_BYTES = 64 * 1024;
 
@@ -77,9 +78,12 @@ void AggregatorServer::processLine(QTcpSocket *client, const QByteArray &line)
         return;
     }
     const QJsonObject message = document.object();
-    const qint64 sequence = qint64(message.value(QStringLiteral("seq")).toDouble(0));
+    const double sequenceValue = message.value(QStringLiteral("seq")).toDouble(0);
+    const qint64 sequence = std::isfinite(sequenceValue) && sequenceValue > 0 &&
+            sequenceValue <= 9007199254740991.0 && std::floor(sequenceValue) == sequenceValue
+            ? qint64(sequenceValue) : 0;
     const QString gateway = message.value(QStringLiteral("gateway")).toString();
-    if (gateway.isEmpty() || sequence <= 0) {
+    if (gateway.isEmpty() || gateway.size() > 128 || sequence <= 0) {
         sendAck(client, sequence, false, QStringLiteral("gateway/seq missing"));
         return;
     }
@@ -88,7 +92,36 @@ void AggregatorServer::processLine(QTcpSocket *client, const QByteArray &line)
     const QString type = message.value(QStringLiteral("type")).toString();
     bool ok = false;
     if (type == QStringLiteral("sensor")) {
+        const int schema = message.value("schema").toInt(1);
+        const QString board = message.value("board").toString();
+        if ((message.contains("schema") && message.value("schema").toDouble(-1) != schema) ||
+                (schema != 1 && schema != 2) ||
+                (schema == 2 && board != "F103ZE") ||
+                (schema == 1 && !board.isEmpty() && board != "F103C8")) {
+            sendAck(client, sequence, false, QStringLiteral("unsupported schema/board")); return;
+        }
         const int validFlags = message.value(QStringLiteral("valid_flags")).toInt(0x07);
+        auto number = [&message](const char *name, double lo, double hi, bool integer) {
+            const QJsonValue value = message.value(QLatin1String(name));
+            const double n = value.toDouble();
+            return value.isDouble() && std::isfinite(n) && n >= lo && n <= hi &&
+                    (!integer || std::floor(n) == n);
+        };
+        if (schema == 2) {
+            const bool flagsOk = number("valid_flags", 0, 15, true);
+            const bool envOk = !(validFlags & 1) ||
+                    (number("temperature", -40, 125, false) && number("humidity", 0, 100, false));
+            const bool ntcOk = !(validFlags & 2) ||
+                    (number("ntc", 0, 4095, true) && number("millivolts", 0, 3600, true));
+            const bool distanceOk = !(validFlags & 4) || number("distance", 0, 65535, true);
+            const bool digitalOk = !(validFlags & 8) || number("digital", 0, 1, true);
+            if (!flagsOk || !envOk || !ntcOk || !distanceOk || !digitalOk) {
+                sendAck(client, sequence, false, QStringLiteral("ZE flags/range conflicts with sensor fields")); return;
+            }
+            ok = m_store->storeSensor(message, peer, &error);
+            if (ok) m_mqtt->publish(line);
+            sendAck(client, sequence, ok, error); return;
+        }
         const bool environmentValid = (validFlags & 0x01) == 0 ||
             (message.value(QStringLiteral("temperature")).isDouble() &&
              message.value(QStringLiteral("humidity")).isDouble());

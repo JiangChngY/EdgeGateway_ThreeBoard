@@ -1,0 +1,12 @@
+[Unit]
+Description=Route from MP157 to the i.MX6ULL peer through the development VM
+After=network.target
+Before=systemui.service
+
+[Service]
+Type=oneshot
+ExecStart=/sbin/ip route replace 192.168.138.3/32 via 192.168.137.2 dev eth0
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

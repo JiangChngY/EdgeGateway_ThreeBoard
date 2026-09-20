@@ -1,0 +1,25 @@
+# Network configuration for the i.MX6ULL NFS-root image.
+# eth0 already has its static address from the kernel ip= boot argument.
+auto lo
+iface lo inet loopback
+
+auto eth0
+iface eth0 inet manual
+
+iface eth1 inet dhcp
+
+iface wlan0 inet dhcp
+	wireless_mode managed
+	wireless_essid any
+	wpa-driver wext
+	wpa-conf /etc/wpa_supplicant.conf
+
+iface atml0 inet dhcp
+
+iface usb0 inet static
+	address 192.168.7.2
+	netmask 255.255.255.0
+	network 192.168.7.0
+
+iface bnep0 inet dhcp
+

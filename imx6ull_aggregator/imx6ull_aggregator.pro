@@ -1,4 +1,5 @@
 QT += core network sql
+QT -= gui
 CONFIG += c++11 console
 CONFIG -= app_bundle
 TEMPLATE = app
@@ -19,4 +20,3 @@ HEADERS += \
 
 unix:target.path = /opt/edge-gateway/bin
 INSTALLS += target
-

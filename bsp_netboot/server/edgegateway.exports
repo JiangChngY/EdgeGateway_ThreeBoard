@@ -1,0 +1,2 @@
+/srv/nfs/edgegateway/mp157 *(rw,sync,no_subtree_check,no_root_squash,insecure)
+/srv/nfs/edgegateway/imx6ull *(rw,sync,no_subtree_check,no_root_squash,insecure)
