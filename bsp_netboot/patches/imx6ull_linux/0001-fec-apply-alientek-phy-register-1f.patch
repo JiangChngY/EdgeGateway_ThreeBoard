@@ -1,0 +1,30 @@
+diff --git a/drivers/net/ethernet/freescale/fec_main.c b/drivers/net/ethernet/freescale/fec_main.c
+--- a/drivers/net/ethernet/freescale/fec_main.c
++++ b/drivers/net/ethernet/freescale/fec_main.c
+@@ -2152,6 +2152,26 @@ static int fec_enet_mii_probe(struct net_device *ndev)
+ 		return PTR_ERR(phy_dev);
+ 	}
+ 
++	/*
++	 * Some ALIENTEK i.MX6ULL revisions use an SR8201F-compatible PHY.
++	 * Its RMII operating mode is selected through vendor register 0x1f.
++	 * U-Boot applies the same 0x8190 setting in board_phy_config(), but
++	 * fec_reset_phy() resets the PHY again before Linux attaches to it.
++	 */
++	if (fep->pdev->dev.of_node) {
++		u32 phy_reg_1f;
++		int ret;
++
++		if (!of_property_read_u32(fep->pdev->dev.of_node,
++					  "alientek,phy-register-1f", &phy_reg_1f)) {
++			ret = phy_write(phy_dev, 0x1f, phy_reg_1f & 0xffff);
++			if (ret < 0)
++				netdev_warn(ndev, "failed to configure PHY register 0x1f: %d\n", ret);
++			else
++				netdev_info(ndev, "configured PHY register 0x1f=0x%04x\n", phy_reg_1f & 0xffff);
++		}
++	}
++
+ 	/* mask with MAC supported features */
+ 	if (fep->quirks & FEC_QUIRK_HAS_GBIT)
+ 	{

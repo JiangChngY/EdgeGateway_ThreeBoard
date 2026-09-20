@@ -26,6 +26,7 @@ firmware_f103/*.bak
 # Qt/qmake generated files
 Makefile
 Makefile.*
+!bsp_netboot/overrides/**/Makefile
 .qmake.stash
 moc_*.cpp
 ui_*.h
@@ -47,3 +48,12 @@ Desktop.ini
 
 # Local-only interview preparation notes
 /docs/08_面试问答.md
+
+# Local SDK/build outputs; publish source and reproducible build scripts only.
+/bsp_netboot/artifacts/
+/mp157_desktop/artifacts/
+/firmware_f103ze/MDK-ARM/EdgeGateway_F103ZE/
+*.uvguix.*
+*.uvoptx
+*.lst
+*.base@*

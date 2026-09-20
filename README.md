@@ -1,149 +1,61 @@
-# 三板分布式边缘数据采集网关
+# 三板边缘数据采集网关
 
-[![Host CI](https://github.com/JiangChngY/EdgeGateway_ThreeBoard/actions/workflows/host-ci.yml/badge.svg)](https://github.com/JiangChngY/EdgeGateway_ThreeBoard/actions/workflows/host-ci.yml)
+当前实物方案：**F103ZET6 精英板 V2.6 → STM32MP157 原厂触摸桌面 → i.MX6ULL 汇聚服务**。
 
-`STM32F103C8T6 + STM32MP157 + i.MX6ULL` 组成的三级边缘数据采集网关。项目使用现成开发板、USB-TTL、以太网和正点原子7寸RGB触摸屏，不需要自制转接PCB，定位为桌面演示和嵌入式软件面试作品。
+当前 F103 的 CubeMX/HAL 工程已收录于 [`firmware_f103ze/`](firmware_f103ze/MDK-ARM/README.md)，Keil 入口为 `firmware_f103ze/MDK-ARM/EdgeGateway_F103ZE.uvprojx`。本仓库的 `firmware_f103/` 和 `mp157_hmi/` 是保留的旧 F103C8 标准库/Qt Widgets 方案，不是当前 ZE 桌面方案的烧录入口。
 
-> 当前仓库已完成电脑侧协议测试、参考TCP联调、公共C协议严格编译和源码结构检查。Keil实编译、ARM Qt交叉编译以及三块开发板实物联调仍按文档标记为“待上板验证”，不会把未验证内容描述为已完成。
-
-## 总体架构
+## 当前链路
 
 ```mermaid
 flowchart LR
-    S["DHT11 + 光照ADC + 电位器ADC"] --> F["STM32F103C8T6<br/>采集、报警、CRC16协议"]
-    F -->|"UART 115200<br/>二进制帧"| M["STM32MP157<br/>Qt触屏HMI、本地SQLite"]
-    M -->|"TCP :9000<br/>NDJSON + seq"| I["i.MX6ULL<br/>校验、去重、汇聚"]
-    I --> D[("汇聚SQLite")]
-    D --> H["HTTP :8080<br/>状态页与JSON API"]
-    I -.->|"可选"| Q["MQTT Broker"]
-    I -->|"ACK seq"| M
-    M -->|"Command"| F
-    F -->|"Command ACK"| M
-    M --> T["7寸RGB触摸屏"]
+    S[DHT11 / NTC / 超声波] --> F[F103ZET6]
+    F -->|USART2 二进制帧| M[MP157 边缘采集 App]
+    M --> D[(历史与持久化上传队列)]
+    D -->|TCP 9000 / schema 2| I[i.MX6ULL 汇聚服务]
+    I --> A[(去重 SQLite)]
+    I -->|确认后移出队列| D
+    A --> W[HTTP 8080 / 状态页和 JSON]
 ```
 
-完整的项目逻辑树、数据上报流程和控制流程见 [项目逻辑与流程图](docs/10_项目逻辑与流程图.md)。
+- MP157 保留正点原子 `systemui`，点击「边缘采集」进入实时采集、历史记录、连接设置、汇聚上传。返回桌面继续采集，暂停采集释放串口。
+- NTC 显示 ADC、毫伏和 DO；未标定时不换算温度。无效或过期实时读数显示 `--`。
+- 历史与待上传记录在同一 SQLite 事务中提交。断网、应用重启后继续补传；汇聚确认后才删除队列条目。
+- 上传序号独立于 F103 的 16 位序号；数据库持有稳定网关标识，避免 F103 复位/序号回绕导致误去重。
+- 6ULL 区分 `schema=2 / F103ZE` 与旧 `schema=1 / F103C8`。NTC、超声波不会混入光照/模拟量字段；旧数据库自动增加列并保留记录。
+- 控制下发、阈值、LED、蜂鸣器功能属于旧 C8 参考实现；当前 ZE 固件没有对应完整命令处理，桌面不展示无效按钮。
 
-## 三块板的职责
+## 当前开发网络
 
-| 节点 | 主要职责 | 关键技术 |
+| 设备/网卡 | 地址 | 用途 |
 |---|---|---|
-| STM32F103C8T6 | DHT11、光照和模拟量采集；现场报警；LED/蜂鸣器控制 | 裸机超循环、SysTick、TIM4、ADC+DMA、UART中断环形缓冲、IWDG、CRC16 |
-| STM32MP157 | 7寸触摸HMI、串口协议解析、曲线、历史数据、控制下发、断网缓存 | Qt 5 Widgets、QSerialPort、QTcpSocket、SQLite WAL、信号槽 |
-| i.MX6ULL | TCP汇聚、数据去重、网关离线检测、备份存储、状态服务 | Qt 5 Core、QTcpServer、SQLite WAL、最小HTTP服务、常驻MQTT转发进程 |
+| Ubuntu ens33 | 192.168.88.131 | Windows SSH / NAT |
+| Ubuntu ens37 | 192.168.137.2 | MP157 TFTP/NFS 与路由 |
+| MP157 eth0 | 192.168.137.3 | 触屏采集 |
+| Ubuntu ens38 | 192.168.138.2 | 6ULL TFTP/NFS 与路由 |
+| i.MX6ULL eth0 | 192.168.138.3 | TCP 9000、HTTP 8080 |
 
-## 关键设计
+两块板通过虚拟机的受限转发通信；两端仅增加对方 IP 的主机路由。规则只允许两个板卡地址经 ens37/ens38 互通。虚拟机必须运行，两个桥接网卡必须对应实际网线连接。
 
-- F103与MP157之间使用小端二进制协议：帧头、版本、类型、序号、长度、负载和Modbus CRC16。
-- 流式解析器逐字节处理串口数据，支持分片、前导噪声、坏CRC丢弃和下一帧恢复。
-- `valid_flags` 区分温湿度、光照、模拟量有效性，并用bit7标识合成演示数据。
-- F103报警采用锁存、人工消音和1℃回差，避免复位后下一秒立即重响。
-- MP157只有收到F103成功ACK后才提交温度阈值；拒绝、断线或2.5秒超时都会回滚。
-- MP157使用SQLite `uplink_queue` 保存未确认上报，TCP重连后按序补传。
-- i.MX6ULL以 `(gateway, seq)` 唯一索引完成幂等去重，并提供HTTP页面和JSON API。
-- MQTT为可选分支，使用常驻 `mosquitto_pub -l -q 1`，不会每条数据都启动新进程。
+## 接线与启动
 
-## 串口帧
+- F103 USART1 是电脑调试文字输出；USART2（PA2 TX、PA3 RX）是二进制采集帧。
+- F103 USART2 → 3.3V USB-TTL → MP157 USB HOST。TX/RX 交叉并共地；已独立供电的 F103 不再接 USB-TTL 电源脚。
+- MP157 继续采用已调通的 TFTP 内核/DTB＋NFS 根 `/srv/nfs/edgegateway/mp157`。
+- 6ULL 使用已验证的 ENET1、TFTP 内核/DTB＋NFS 根 `/srv/nfs/edgegateway/imx6ull`。
+- NFS 的新 App 不会自动出现在原 eMMC 系统里；此次应用部署不刷写 eMMC、U-Boot 或设备树。
 
-```text
-AA 55 | Version | Type | Sequence(2) | Length(2) | Payload(0..64) | CRC16(2)
-```
+## 验证与文档
 
-消息类型：
+- [桌面 App](mp157_desktop/README.md)
+- [2026-09-19 接续与验收](docs/12_ZE三板接续与验收.md)
+- [首次桌面安装](mp157_desktop/INSTALLATION.md)
+- [TFTP/NFS 网络启动](docs/11_TFTP_NFS网络启动.md)
+- [旧 C8 协议](common/协议说明.md)、[旧 C8 参考逻辑](docs/10_项目逻辑与流程图.md)
 
-- `0x01`：传感器数据
-- `0x02`：心跳
-- `0x10`：控制命令
-- `0x11`：命令ACK
+基础检查：`python3 tests/run_all.py`。
 
-详见 [串口协议说明](common/协议说明.md)。
+新链路集成检查：`python3 mp157_desktop/test_uplink.py /path/to/edge-desktop /path/to/edge-aggregator`。测试启动真实 Qt 程序，以 PTY 和 TCP 合成数据覆盖离线/重启补传、拒收、确认丢失与分片、错误确认、去重、旧库迁移及 HTTP 字段。
 
-## 目录结构
+ARM 编译和目标库 QEMU 检查不能替代真实屏幕、触摸、传感器和网线验收。NFS 数据库依赖虚拟机及网络；长期独立运行应迁移至板端持久存储。上传队列上限 100000 条，达到上限会报告新样本未保存。
 
-```text
-common/                    跨平台C协议
-firmware_f103/             STM32F103标准外设库与Keil工程
-mp157_hmi/                 STM32MP157 Qt Widgets应用
-imx6ull_aggregator/        i.MX6ULL Qt Core后台服务
-config/                    两块Linux板的示例配置
-deploy/                    构建、安装和systemd服务脚本
-tools/                     Python模拟器、串口监视器和辅助工具
-tests/                     21项Python测试与C协议运行测试
-docs/                      架构、接线、部署、验收和面试说明
-.github/workflows/         GitHub Actions电脑侧持续集成
-```
-
-## 电脑侧快速验证
-
-```bash
-git clone https://github.com/JiangChngY/EdgeGateway_ThreeBoard.git
-cd EdgeGateway_ThreeBoard
-python tests/run_all.py
-```
-
-Windows也可以双击 `一键电脑测试.bat`。
-
-模拟i.MX6ULL服务：
-
-```bash
-python tools/imx_test_server.py --host 0.0.0.0 --port 9000
-```
-
-另开终端模拟MP157上报：
-
-```bash
-python tools/mp157_uplink_sim.py --host 127.0.0.1 --port 9000 --count 20
-```
-
-## 最简接线
-
-```text
-F103 PA9  / USART1_TX  -> USB-TTL RXD
-F103 PA10 / USART1_RX  <- USB-TTL TXD
-F103 GND               --- USB-TTL GND
-USB-TTL USB            ->  MP157 USB Host
-MP157 与 i.MX6ULL      ->  同一路由器/交换机
-7寸RGB屏               ->  MP157原装RGB排线接口
-```
-
-不要把USB-TTL模块的5V或3.3V电源脚接到F103；三块开发板分别使用自己的电源。完整传感器引脚和安全说明见 [接线说明](docs/02_接线说明.md)。
-
-## 编译与部署
-
-| 内容 | 文档 |
-|---|---|
-| F103 Keil编译与ST-Link烧录 | [docs/03_F103编译烧录.md](docs/03_F103编译烧录.md) |
-| STM32MP157 Qt交叉编译与部署 | [docs/04_MP157编译部署.md](docs/04_MP157编译部署.md) |
-| i.MX6ULL服务编译与部署 | [docs/05_iMX6ULL编译部署.md](docs/05_iMX6ULL编译部署.md) |
-| 电脑先行联调 | [docs/06_电脑先行联调.md](docs/06_电脑先行联调.md) |
-| 演示与验收 | [docs/07_演示与验收.md](docs/07_演示与验收.md) |
-| 第二轮代码审查修复 | [docs/09_代码审查修复记录.md](docs/09_代码审查修复记录.md) |
-
-默认网络配置：
-
-- i.MX6ULL：`192.168.10.2`
-- STM32MP157：`192.168.10.3`
-- TCP汇聚：`192.168.10.2:9000`
-- HTTP状态页：`http://192.168.10.2:8080/`
-
-## 测试与验证边界
-
-电脑侧自动检查包括：
-
-- 21项Python协议、TCP、工程结构和审查回归测试。
-- GCC C99严格编译并运行公共协议测试。
-- GitHub Actions中的Qt 5主机编译，用于提前发现Qt API和C++编译错误。
-- Linux部署脚本语法检查。
-
-仍需实物完成：
-
-- Keil/ARMCC实编译、ST-Link烧录和DHT11真实时序。
-- 正点原子MP157与i.MX6ULL对应SDK的ARM交叉编译。
-- RGB屏设备树/Qt平台插件、USB-TTL设备名、固定IP和systemd自启动。
-- 三板断网补传、触摸控制和长时间稳定性测试。
-
-实际结果统一记录在 [上板验证记录](docs/上板验证记录.md)。
-
-## 第三方代码说明
-
-`firmware_f103/Library` 与 `firmware_f103/Start` 包含STM32标准外设库和CMSIS相关文件，保留了原始版权与许可声明；项目代码未移除这些声明。
+第三方代码保留原版权和许可声明；原厂桌面和 Qt 的分发仍须遵守各自许可证。

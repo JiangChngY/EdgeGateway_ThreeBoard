@@ -18,17 +18,19 @@ class ProjectStructureTests(unittest.TestCase):
             ".gitignore",
             ".gitattributes",
             ".github/workflows/host-ci.yml",
-            "PROJECT_STATUS.md",
-            "TEST_REPORT.md",
             "common/edge_protocol.c",
             "common/edge_protocol.h",
             "firmware_f103/Project.uvprojx",
+            "firmware_f103ze/EdgeGateway_F103ZE.ioc",
+            "firmware_f103ze/MDK-ARM/EdgeGateway_F103ZE.uvprojx",
+            "mp157_desktop/edge-desktop.pro",
             "mp157_hmi/mp157_hmi.pro",
             "imx6ull_aggregator/imx6ull_aggregator.pro",
             "config/mp157.ini",
             "config/imx6ull.ini",
             "docs/02_接线说明.md",
-            "docs/07_演示与验收.md",
+            "docs/06_协议与网络联调.md",
+            "docs/07_系统演示.md",
             "docs/09_代码审查修复记录.md",
             "docs/10_项目逻辑与流程图.md",
             "tests/c_protocol_test.c",
@@ -78,6 +80,24 @@ class ProjectStructureTests(unittest.TestCase):
                     missing.append(f"{relative}: {token}")
         self.assertEqual(missing, [])
 
+    def test_ze_keil_project_is_self_contained(self):
+        project_path = ROOT / "firmware_f103ze/MDK-ARM/EdgeGateway_F103ZE.uvprojx"
+        project = ET.parse(project_path).getroot()
+        self.assertIn("STM32F103ZE", [node.text for node in project.findall(".//Device")])
+        base = project_path.parent
+        missing = []
+        for node in project.findall(".//FilePath"):
+            relative = (node.text or "").replace("\\", "/")
+            source = (base / relative).resolve()
+            self.assertTrue(source.is_relative_to(ROOT / "firmware_f103ze"), relative)
+            if not source.is_file():
+                missing.append(relative)
+        for node in project.findall(".//IncludePath"):
+            for relative in (node.text or "").split(";"):
+                if relative and not (base / relative.replace("\\", "/")).is_dir():
+                    missing.append(relative)
+        self.assertEqual(missing, [])
+
     def test_ini_files_parse(self):
         for path in sorted((ROOT / "config").glob("*.ini")):
             parser = configparser.ConfigParser()
@@ -92,7 +112,7 @@ class ProjectStructureTests(unittest.TestCase):
     def test_deployment_scripts_use_linux_line_endings(self):
         for path in sorted((ROOT / "deploy").glob("*.sh")):
             content = path.read_bytes()
-            self.assertTrue(content.startswith(b"#!/bin/sh\n"), path.name)
+            self.assertTrue(content.startswith((b"#!/bin/sh\n", b"#!/usr/bin/env bash\n")), path.name)
             self.assertNotIn(b"\r\n", content, path.name)
 
 

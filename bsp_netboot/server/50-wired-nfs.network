@@ -1,0 +1,10 @@
+[Match]
+Name=eth* en*
+KernelCommandLine=nfsroot
+
+[Network]
+# The kernel ip= argument supplies the static address during NFS boot.
+# Do not run DHCP here, otherwise eth0 receives a second address.
+DHCP=no
+IPv6AcceptRA=no
+KeepConfiguration=static

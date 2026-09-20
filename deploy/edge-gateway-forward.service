@@ -1,0 +1,13 @@
+[Unit]
+Description=Restricted forwarding between EdgeGateway development boards
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/edge-gateway-forward start
+ExecStop=/usr/local/sbin/edge-gateway-forward stop
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
